@@ -8,9 +8,9 @@ metadata: {"clawdbot":{"emoji":"🔄","requires":{"env":["GEMINI_API_KEY","UPLOA
 
 Analyze any website and generate a 6-slide carousel for TikTok/Instagram with visual coherence. Posts directly to your feed (no drafts) with auto trending music. Both APIs (Gemini + upload-post.com) have free plans — no credit card needed to start.
 
-## Philosophy: Daily Iteration Loop
+## Philosophy: Daily Automated Loop
 
-The key to growth is **consistency + learning**:
+The key to growth is **consistency + learning**. This skill is designed to run **every day, fully autonomous**. The agent executes the entire pipeline without asking for confirmation — from research to publishing — and only notifies you at the end with the published TikTok and Instagram URLs.
 
 1. **Post 1 carousel per day** - Consistency beats virality
 2. **Track everything** - Every post generates data
@@ -33,7 +33,31 @@ The skill maintains a `learnings.json` that accumulates insights across all post
 
 **This is not a one-shot tool. It's a growth engine.**
 
+## Before You Start: Account Warmup
+
+If your TikTok or Instagram accounts are brand new, **don't post carousels on day one**. Both platforms throttle reach on fresh accounts that jump straight into publishing content.
+
+### TikTok (7-14 days warmup)
+
+- Spend 30-60 minutes per day using TikTok normally: scroll, like (about 1 in 10 videos), follow accounts in your niche
+- Wait until your For You page is dominated by content in your niche — that means the algorithm has profiled your account
+- Only then start posting. Your first posts will reach the right audience instead of getting buried
+
+### Instagram (5-7 days warmup)
+
+- Browse Reels and the Explore page daily, engage with content in your niche
+- Follow relevant accounts, like and comment genuinely
+- Post 2-3 stories before your first carousel to signal the account is active
+
+### Why this matters
+
+Platforms flag accounts that go from zero activity to automated posting. A warmed-up account gets 5-10x more initial reach than a cold one. This step is boring but it's the difference between 500 views and 50,000 views on your first carousel.
+
+If your accounts are already active and established, skip this and go straight to Quick Start.
+
 ## Quick Start
+
+The agent should run the full pipeline automatically. **Do not ask for confirmation between steps.**
 
 ```bash
 # 1. Full business research
@@ -42,8 +66,11 @@ node {baseDir}/scripts/analyze-web.js https://your-website.com
 # 2. Generate slides with visual coherence
 GEMINI_API_KEY="your-key" bash {baseDir}/scripts/generate-slides.sh
 
-# 3. Review slides (agent verifies text and quality)
-# Agent uses vision to check each slide
+# 3. Review slides with vision → auto-fix any broken ones
+# Agent uses its image-to-text model to verify each slide
+# If any slide has issues (cut text, bad quality, wrong spelling):
+#   → Regenerate ONLY that slide automatically
+#   → Re-verify until all 6 slides pass
 
 # 4. Publish to TikTok + Instagram
 UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
@@ -54,6 +81,8 @@ UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/check-analytics.sh 7
 # 6. Learn from data for next carousels
 node {baseDir}/scripts/learn-from-analytics.js
 ```
+
+**The agent only notifies the user at the very end**, with the published TikTok and Instagram post URLs. Everything else runs autonomously.
 
 ## Image Model
 
@@ -136,16 +165,23 @@ Each slide has:
 - `/tmp/carousel/slide-{1-6}.jpg`
 - `/tmp/carousel/caption.txt`
 
-## Step 3: Review with Vision
+## Step 3: Review with Vision (Autonomous)
 
-After generating, the agent MUST review each slide:
-- ✓ Text is legible and correct
-- ✓ Words are not cut off
-- ✓ Correct spelling
-- ✓ Visual coherence between slides
-- ✓ Acceptable image quality
+After generating, the agent MUST review each slide using its vision/image-to-text model. **This step is fully automatic — do not ask the user to review.**
 
-If there are errors, regenerate the specific slide.
+For each slide, verify:
+- ✓ Text is fully legible and correct
+- ✓ No words cut off at edges
+- ✓ Product name spelled correctly
+- ✓ Visual coherence between all slides
+- ✓ No text in bottom 20% (TikTok controls area)
+- ✓ Acceptable image quality (not blurry or distorted)
+
+**If any slide fails:** Regenerate ONLY that specific slide automatically. Use the **same input image** that was used when originally generating it:
+- Slide 1: no input image (it establishes the style)
+- Slides 2-6: always use `slide-1.jpg` as `--input-image` (the original reference)
+
+Re-verify after regenerating. Repeat until all 6 slides pass. Do not ask the user — fix it automatically.
 
 ## Image Format
 
