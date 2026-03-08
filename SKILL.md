@@ -210,7 +210,7 @@ Re-verify after regenerating. Repeat until all 6 slides pass. Do not ask the use
 
 ## Step 4: Publish to TikTok + Instagram (`publish-carousel.sh`)
 
-Publishes the carousel to TikTok and Instagram using Upload-Post API.
+Publishes the carousel to TikTok and Instagram using Upload-Post API. **It automatically schedules the post at the optimal time** defined by `learnings.json` (if past that time today, it schedules for tomorrow).
 
 ```bash
 UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
@@ -227,6 +227,7 @@ UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
 - `privacy_level=PUBLIC_TO_EVERYONE`
 - `media_type=IMAGE` - Photo carousel on Instagram
 - `async_upload=true` - Process in background
+- `scheduled_date` - ISO8601 timestamp (auto-calculated from best performing hour)
 - `photos[]` - The 6 slides JPG
 
 **⚠️ IMPORTANT Instagram:** 

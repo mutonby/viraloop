@@ -64,6 +64,26 @@ fi
 echo "🚀 Sending to Upload-Post API..."
 echo "   🎵 auto_add_music: enabled"
 echo "   🌍 privacy_level: PUBLIC_TO_EVERYONE"
+
+# Check for best scheduling time from learnings
+BEST_TIME=$(jq -r '.insights.bestTimes[0] // empty' "$CAROUSEL_DIR/learnings.json" 2>/dev/null)
+if [ -n "$BEST_TIME" ]; then
+    HOUR=$(echo "$BEST_TIME" | cut -d: -f1)
+    CURRENT_HOUR=$(date +%H)
+    
+    # Format: YYYY-MM-DDTHH:MM:SS (ISO 8601)
+    # Using Mac/BSD date (-v) with fallback to GNU date (-d)
+    if [ "$CURRENT_HOUR" -ge "$HOUR" ]; then
+        # Already passed today, schedule for tomorrow
+        SCHEDULE_DATE=$(date -v+1d -v${HOUR}H -v00M -v00S +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d "tomorrow $HOUR:00:00" +%Y-%m-%dT%H:%M:%S)
+    else
+        # Schedule for later today
+        SCHEDULE_DATE=$(date -v${HOUR}H -v00M -v00S +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d "today $HOUR:00:00" +%Y-%m-%dT%H:%M:%S)
+    fi
+    echo "   ⏰ Scheduled for: $SCHEDULE_DATE ($BEST_TIME)"
+else
+    echo "   ⚡ Publishing immediately (no timing data yet)"
+fi
 echo ""
 
 # Create command
@@ -78,6 +98,10 @@ CMD="$CMD -F 'auto_add_music=true'"
 CMD="$CMD -F 'privacy_level=PUBLIC_TO_EVERYONE'"
 CMD="$CMD -F 'media_type=IMAGE'"
 CMD="$CMD -F 'async_upload=true'"
+
+if [ -n "$SCHEDULE_DATE" ]; then
+    CMD="$CMD -F 'scheduled_date=$SCHEDULE_DATE'"
+fi
 
 # Add photos
 for slide in $SLIDES; do
