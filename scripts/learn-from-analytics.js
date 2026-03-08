@@ -24,6 +24,7 @@ function loadLearnings() {
       posts: [],
       insights: {
         bestHooks: [],
+        bestPrompts: [],
         bestTimes: [],
         bestDays: [],
         avgViews: 0,
@@ -54,7 +55,7 @@ function calculateEngagement(views, likes, comments, shares) {
   return ((likes + comments * 2 + shares * 3) / views * 100).toFixed(2);
 }
 
-function analyzePost(post, learnings) {
+function analyzePost(post, learnings, prompts = []) {
   const views = post.views || post.metrics?.views || 0;
   const likes = post.likes || post.metrics?.likes || 0;
   const comments = post.comments || post.metrics?.comments || 0;
@@ -66,6 +67,7 @@ function analyzePost(post, learnings) {
   return {
     id: post.request_id || post.id || Date.now().toString(),
     hook: extractHook(post.title || post.caption),
+    prompts: prompts,
     platform: post.platform || 'tiktok',
     date: post.date || post.timestamp || new Date().toISOString(),
     hour: new Date(post.date || post.timestamp || Date.now()).getHours(),
@@ -111,6 +113,16 @@ function updateInsights(learnings) {
   learnings.insights.bestHooks = learnings.insights.topPerformers
     .map(p => p.hook)
     .filter(h => h);
+    
+  // Best prompts (extract style from slide 1 of top performers)
+  learnings.insights.bestPrompts = sortedByViews
+    .slice(0, 3)
+    .filter(p => p.prompts && p.prompts.length > 0)
+    .map(p => {
+      const slide1 = p.prompts.find(pr => Number(pr.slide) === 1);
+      return slide1 ? slide1.prompt : null;
+    })
+    .filter(p => p);
   
   // Best posting times
   const hourCounts = {};
@@ -153,6 +165,14 @@ function updateInsights(learnings) {
       type: 'hook',
       priority: 'high',
       message: `Use hooks similar to: "${learnings.insights.bestHooks[0]}"`
+    });
+  }
+  
+  if (learnings.insights.bestPrompts.length > 0) {
+    learnings.recommendations.push({
+      type: 'prompt',
+      priority: 'high',
+      message: 'Reuse the visual style (colors/lighting) from your top performing prompt.'
     });
   }
   
@@ -218,6 +238,15 @@ async function main() {
   if (postInfo.request_id) {
     const exists = learnings.posts.find(p => p.id === postInfo.request_id);
     if (!exists) {
+      // Load prompts if they exist
+      const promptsFile = path.join(CAROUSEL_DIR, 'slide-prompts.json');
+      let slidePrompts = [];
+      try {
+        slidePrompts = JSON.parse(fs.readFileSync(promptsFile, 'utf8'));
+      } catch (e) {
+        // No prompts
+      }
+
       // Get metrics from snapshot if available
       const metrics = snapshot.profile?.tiktok || {};
       const newPost = analyzePost({
@@ -229,7 +258,7 @@ async function main() {
         likes: metrics.likes || 0,
         comments: metrics.comments || 0,
         shares: metrics.shares || 0
-      }, learnings);
+      }, learnings, slidePrompts);
       
       learnings.posts.push(newPost);
       learnings.totalPosts = learnings.posts.length;

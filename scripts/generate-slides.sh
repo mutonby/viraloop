@@ -66,6 +66,9 @@ echo ""
 
 BASE_STYLE="Create an image of: TikTok vertical carousel slide (9:16 ratio, 768x1376 pixels). Style: professional social media content, cinematic, eye-catching. Composition: vertical portrait orientation, text centered at 28%% from top. Lighting: professional, depth of field, soft shadows. Background: $IMAGE_THEME. Color palette: $COLOR_DESC. Text overlay: large bold $FONT font in white with black outline for readability, 4-6 words per line, max 4 lines. Avoid: text in bottom 20%% of image, blurry text, cut-off words, horizontal orientation, watermarks, logos."
 
+# Initialize prompts tracking
+echo '[]' > "$CAROUSEL_DIR/slide-prompts.json"
+
 generate_slide() {
     local NUM=$1
     local TEXT=$2
@@ -93,6 +96,14 @@ generate_slide() {
             --filename "$CAROUSEL_DIR/slide-$NUM.jpg" \
             --resolution 1K 2>/dev/null || echo "   ⚠️ Error on slide $NUM"
     fi
+    
+    # Save prompt for analytics tracking
+    local ESCAPED_PROMPT=$(echo "$PROMPT" | sed 's/"/\\"/g' | tr '\n' ' ')
+    local ESCAPED_TEXT=$(echo "$TEXT" | sed 's/"/\\"/g' | tr '\n' ' ')
+    local TMP_PROMPTS=$(cat "$CAROUSEL_DIR/slide-prompts.json")
+    echo "$TMP_PROMPTS" | jq --arg slide "$NUM" --arg prompt "$ESCAPED_PROMPT" --arg text "$ESCAPED_TEXT" \
+        '. += [{"slide": ($slide|tonumber), "text": $text, "prompt": $prompt}]' \
+        > "$CAROUSEL_DIR/slide-prompts.json"
     echo ""
 }
 
@@ -208,3 +219,4 @@ echo "────────────────────────�
 echo ""
 echo "$CAPTION" > "$CAROUSEL_DIR/caption.txt"
 echo "💾 Saved to: $CAROUSEL_DIR/caption.txt"
+echo "💾 Prompts saved to: $CAROUSEL_DIR/slide-prompts.json"
