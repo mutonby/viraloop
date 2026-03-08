@@ -60,29 +60,45 @@ If your accounts are already active and established, skip this and go straight t
 The agent should run the full pipeline automatically. **Do not ask for confirmation between steps.**
 
 ```bash
+# 0. FIRST: Check analytics from previous posts + learn
+#    (Skip this only on the very first run when there are no posts yet)
+UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/check-analytics.sh 7
+node {baseDir}/scripts/learn-from-analytics.js
+
 # 1. Full business research
 node {baseDir}/scripts/analyze-web.js https://your-website.com
 
-# 2. Generate slides with visual coherence
+# 2. Read learnings.json and use best hooks/times/styles for this carousel
+#    → Pick a hook style from bestHooks (or try a variation)
+#    → Use recommended posting time
+#    → Apply any insights from recommendations
+
+# 3. Generate slides with visual coherence
 GEMINI_API_KEY="your-key" bash {baseDir}/scripts/generate-slides.sh
 
-# 3. Review slides with vision → auto-fix any broken ones
-# Agent uses its image-to-text model to verify each slide
-# If any slide has issues (cut text, bad quality, wrong spelling):
-#   → Regenerate ONLY that slide automatically
-#   → Re-verify until all 6 slides pass
+# 4. Review slides with vision → auto-fix any broken ones
+#    Agent uses its image-to-text model to verify each slide
+#    If any slide has issues (cut text, bad quality, wrong spelling):
+#      → Regenerate ONLY that slide automatically
+#      → Re-verify until all 6 slides pass
 
-# 4. Publish to TikTok + Instagram
+# 5. Publish to TikTok + Instagram
 UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
-
-# 5. Check analytics (after 24-48h)
-UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/check-analytics.sh 7
-
-# 6. Learn from data for next carousels
-node {baseDir}/scripts/learn-from-analytics.js
 ```
 
 **The agent only notifies the user at the very end**, with the published TikTok and Instagram post URLs. Everything else runs autonomously.
+
+### How Learnings Improve Each Carousel
+
+The `learnings.json` file grows smarter with every post. Before generating slides, the agent reads it and applies:
+
+- **Best hooks:** Use hook styles that got the most views. Try variations of winners.
+- **Best times:** Schedule publishing at the time that historically gets most reach.
+- **Best days:** Prefer days that perform better.
+- **Low performers:** Avoid hook styles that consistently underperform.
+- **Engagement tips:** If engagement is low, use more provocative hooks or different visual styles.
+
+This means carousel #30 will have dramatically better prompts than carousel #1.
 
 ## Image Model
 
@@ -251,38 +267,44 @@ Docs: https://docs.upload-post.com/api/get-analytics
 
 ## Step 6: Learn and Improve (`learn-from-analytics.js`)
 
-Analyzes data and saves learnings for future carousels.
+Analyzes data and saves learnings for future carousels. **This must run at the START of every daily loop**, not just at the end.
 
 ```bash
 node {baseDir}/scripts/learn-from-analytics.js
 ```
 
-**Generates:**
+**Generates/updates:**
 - `learnings.json` - Accumulated knowledge base
 - Best hooks (those generating most views)
-- Optimal posting times
-- Recommendations for next carousel
+- Optimal posting times and days
+- Engagement rate tracking
+- Recommendations for the next carousel
 
-## Full Flow
+**The agent must read `learnings.json` before generating each new carousel** and use the insights to pick better hooks, avoid underperforming styles, and schedule at optimal times.
+
+## Daily Loop (Complete Flow)
+
+This is the exact sequence the agent runs every day, fully autonomous:
 
 ```bash
-# 1. Research business
+# STEP 0: Learn from previous posts (skip on first run)
+UPLOADPOST_TOKEN="..." UPLOADPOST_USER="myuser" bash {baseDir}/scripts/check-analytics.sh 7
+node {baseDir}/scripts/learn-from-analytics.js
+# → Agent reads learnings.json and picks the best hook style + posting time
+
+# STEP 1: Research business
 node {baseDir}/scripts/analyze-web.js https://my-product.com
 
-# 2. Generate slides
+# STEP 2: Generate slides (using insights from learnings)
 GEMINI_API_KEY="..." bash {baseDir}/scripts/generate-slides.sh
 
-# 3. Review with vision (agent verifies text)
-# Agent checks each slide image
+# STEP 3: Review with vision → auto-fix broken slides
+# Agent checks each slide, regenerates any that fail
 
-# 4. Publish
+# STEP 4: Publish
 UPLOADPOST_TOKEN="..." UPLOADPOST_USER="myuser" bash {baseDir}/scripts/publish-carousel.sh
 
-# 5. (After a few hours/days) Analyze
-UPLOADPOST_TOKEN="..." UPLOADPOST_USER="myuser" bash {baseDir}/scripts/check-analytics.sh 7
-
-# 6. Learn for next carousels
-node {baseDir}/scripts/learn-from-analytics.js
+# → Notify user ONLY here, with TikTok + Instagram URLs
 ```
 
 ## Files
