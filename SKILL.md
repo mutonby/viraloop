@@ -100,6 +100,8 @@ The `learnings.json` file grows smarter with every post. Before generating slide
 
 This means carousel #30 will have dramatically better prompts than carousel #1.
 
+**First runs (no data yet):** The first few times there won't be analytics data — that's fine. The agent uses the default hooks from `analyze-web.js` and the generic recommendations. After 5-10 posts, `learnings.json` will have enough data to start making meaningful recommendations. The more you post, the smarter it gets.
+
 ## Image Model
 
 Uses **gemini-3.1-flash-image-preview** to generate slides.
