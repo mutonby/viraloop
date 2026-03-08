@@ -100,6 +100,8 @@ The `learnings.json` file grows smarter with every post. Before generating slide
 
 This means carousel #30 will have dramatically better prompts than carousel #1.
 
+**Agent Execution Schedule:** The agent shouldn't just run at a random time. It should read `learnings.json`, look at the `bestTimes` array, and **automatically adjust its own cron/automation schedule** so that tomorrow's execution happens right at the optimal publishing time.
+
 **First runs (no data yet):** The first few times there won't be analytics data — that's fine. The agent uses the default hooks from `analyze-web.js` and the generic recommendations. After 5-10 posts, `learnings.json` will have enough data to start making meaningful recommendations. The more you post, the smarter it gets.
 
 ## Image Model
@@ -210,7 +212,7 @@ Re-verify after regenerating. Repeat until all 6 slides pass. Do not ask the use
 
 ## Step 4: Publish to TikTok + Instagram (`publish-carousel.sh`)
 
-Publishes the carousel to TikTok and Instagram using Upload-Post API. **It automatically schedules the post at the optimal time** defined by `learnings.json` (if past that time today, it schedules for tomorrow).
+Publishes the carousel directly to the TikTok and Instagram feed using Upload-Post API. 
 
 ```bash
 UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
@@ -227,7 +229,6 @@ UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
 - `privacy_level=PUBLIC_TO_EVERYONE`
 - `media_type=IMAGE` - Photo carousel on Instagram
 - `async_upload=true` - Process in background
-- `scheduled_date` - ISO8601 timestamp (auto-calculated from best performing hour)
 - `photos[]` - The 6 slides JPG
 
 **⚠️ IMPORTANT Instagram:** 
@@ -293,7 +294,8 @@ This is the exact sequence the agent runs every day, fully autonomous:
 # STEP 0: Learn from previous posts (skip on first run)
 UPLOADPOST_TOKEN="..." UPLOADPOST_USER="myuser" bash {baseDir}/scripts/check-analytics.sh 7
 node {baseDir}/scripts/learn-from-analytics.js
-# → Agent reads learnings.json and picks the best hook style + posting time
+# → Agent reads learnings.json and picks the best hook style
+# → CRITICAL: Agent checks bestTimes and schedules ITS OWN NEXT EXECUTION for that exact hour tomorrow
 
 # STEP 1: Research business
 node {baseDir}/scripts/analyze-web.js https://my-product.com
