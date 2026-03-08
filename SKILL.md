@@ -1,0 +1,310 @@
+---
+name: viraloop
+description: OpenClaw AI agent skill for automated TikTok and Instagram carousel growth. Analyzes any website URL to extract brand, competitors, value proposition, then generates viral slides with auto-publishing and trending music via upload-post API. Built-in analytics feedback loop.
+metadata: {"clawdbot":{"emoji":"🔄","requires":{"env":["GEMINI_API_KEY","UPLOADPOST_TOKEN"],"bins":["node","jq","uv"]}}}
+---
+
+# Viraloop
+
+Analyze any website and generate a 6-slide carousel for TikTok/Instagram with visual coherence.
+
+## Philosophy: Daily Iteration Loop
+
+The key to growth is **consistency + learning**:
+
+1. **Post 1 carousel per day** - Consistency beats virality
+2. **Track everything** - Every post generates data
+3. **Learn from data** - What hooks work? What times? What visuals?
+4. **Iterate and improve** - Each carousel is better than the last
+
+```
+Day 1: Post → Analyze → Learn
+Day 2: Post (improved) → Analyze → Learn  
+Day 3: Post (better) → Analyze → Learn
+...
+Day 30: You have 30 data points and a refined strategy
+```
+
+The skill maintains a `learnings.json` that accumulates insights across all posts:
+- Best performing hooks
+- Optimal posting times
+- Visual styles that work
+- CTAs that convert
+
+**This is not a one-shot tool. It's a growth engine.**
+
+## Quick Start
+
+```bash
+# 1. Full business research
+node {baseDir}/scripts/analyze-web.js https://your-website.com
+
+# 2. Generate slides with visual coherence
+GEMINI_API_KEY="your-key" bash {baseDir}/scripts/generate-slides.sh
+
+# 3. Review slides (agent verifies text and quality)
+# Agent uses vision to check each slide
+
+# 4. Publish to TikTok + Instagram
+UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
+
+# 5. Check analytics (after 24-48h)
+UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/check-analytics.sh 7
+
+# 6. Learn from data for next carousels
+node {baseDir}/scripts/learn-from-analytics.js
+```
+
+## Image Model
+
+Uses **gemini-3.1-flash-image-preview** to generate slides.
+- Local script: `{baseDir}/scripts/generate_image.py`
+- Supports image-to-image for visual coherence between slides
+
+## Step 1: Full Research (`analyze-web.js`)
+
+Performs COMPLETE business investigation:
+
+### 1. Brand Analysis
+- Brand name (from domain or title)
+- Logo (URL or SVG)
+- CSS colors (background, primary, links, headings)
+- Typography (body font, heading font)
+- Favicon
+
+### 2. Content Analysis
+- Headline and tagline
+- All headings (page structure)
+- Features/benefits (title + description)
+- Pricing/plans
+- Testimonials
+- Stats/metrics
+- CTAs
+- Meta tags (title, description, og:image)
+
+### 3. Internal Pages
+- Navigates pricing, features, about, testimonials
+- Extracts additional content from each page
+
+### 4. Competitor Detection
+- Searches for known competitor mentions in content
+- List of 20+ known SaaS competitors (Buffer, Hootsuite, Later, etc.)
+- Detects "vs", "alternative", "compare" sections
+- No external searches required - all from the website itself
+
+### 5. Storytelling
+- Detects business type (SaaS, ecommerce, app)
+- Detects niche (social-media-tools, developer-tools, etc.)
+- Generates hooks based on customer pain points
+- Defines pain points from features
+- Creates transformation narrative (before → after)
+
+### 6. Visual Context
+- Brand colors in CSS format
+- Color description for prompts
+- Typography for slides
+- Image themes based on niche
+- Style guide for coherence
+
+**Output:** `/tmp/carousel/analysis.json`
+
+## Step 2: Generate Slides (`generate-slides.sh`)
+
+Generates 6 slides with visual coherence using image-to-image:
+
+| Slide | Type | Content |
+|-------|------|---------|
+| 1 | **HOOK** | Question/problem that hooks. Establishes ALL visual style. |
+| 2 | **Problem** | Agitate the pain. "You upload to TikTok... then Instagram..." |
+| 3 | **Agitation** | Competition advancing. Urgency. |
+| 4 | **Solution** | Present the product with its value proposition. |
+| 5 | **Feature** | Main benefit. |
+| 6 | **CTA** | "Link in bio 👆" + call to action. |
+
+### Visual Coherence
+- Slide 1 generates the base style (colors, typography, mood)
+- Slides 2-6 use image-to-image with slide 1 as reference
+- Maintains same color palette, fonts, and aesthetic
+
+### Prompts per Slide
+Each slide has:
+- **Text:** The main message
+- **Scene:** Detailed visual description for background
+- **Style:** Based on brand analysis
+
+**Output:** 
+- `/tmp/carousel/slide-{1-6}.jpg`
+- `/tmp/carousel/caption.txt`
+
+## Step 3: Review with Vision
+
+After generating, the agent MUST review each slide:
+- ✓ Text is legible and correct
+- ✓ Words are not cut off
+- ✓ Correct spelling
+- ✓ Visual coherence between slides
+- ✓ Acceptable image quality
+
+If there are errors, regenerate the specific slide.
+
+## Image Format
+
+- **Resolution:** 768x1376 (9:16 vertical ratio)
+- **Format:** JPG (TikTok does NOT accept PNG)
+- **Text:** Large, bold, with shadow for readability
+- **Background:** Scene relevant to the business, not just solid colors
+
+## Step 4: Publish to TikTok + Instagram (`publish-carousel.sh`)
+
+Publishes the carousel to TikTok and Instagram using Upload-Post API.
+
+```bash
+UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/publish-carousel.sh
+```
+
+**Endpoint:** `POST /api/upload_photos`
+- Docs: https://docs.upload-post.com/api/upload-photo
+
+**Parameters sent:**
+- `platform[]=tiktok` + `platform[]=instagram`
+- `auto_add_music=true` - Adds music on TikTok automatically
+- `tiktok_title` - Short title (max 90 chars) + hashtags
+- `title` - Full caption for Instagram
+- `privacy_level=PUBLIC_TO_EVERYONE`
+- `media_type=IMAGE` - Photo carousel on Instagram
+- `async_upload=true` - Process in background
+- `photos[]` - The 6 slides JPG
+
+**⚠️ IMPORTANT Instagram:** 
+After publishing, user must go to Instagram and add viral music manually:
+1. Open Instagram → Profile → The post
+2. Edit → Add music
+3. Search for trending/viral song
+
+**Output:** Saves `request_id` in `post-info.json` for tracking.
+
+## Step 5: Analyze Performance (`check-analytics.sh`)
+
+Gets TikTok and Instagram analytics to see what works.
+
+```bash
+UPLOADPOST_TOKEN="your-token" bash {baseDir}/scripts/check-analytics.sh 7
+```
+
+**Endpoints used:**
+
+1. **Profile analytics:**
+   ```
+   GET /api/analytics/{user}?platforms=tiktok
+   ```
+   → Followers, likes, comments, shares, impressions
+
+2. **Total impressions:**
+   ```
+   GET /api/uploadposts/total-impressions/{user}?platform=tiktok&breakdown=true
+   ```
+   → Total views per day
+
+3. **Per-post analytics:**
+   ```
+   GET /api/uploadposts/post-analytics/{request_id}
+   ```
+   → Views, likes, comments for the specific carousel (TikTok + Instagram)
+
+Docs: https://docs.upload-post.com/api/get-analytics
+
+## Step 6: Learn and Improve (`learn-from-analytics.js`)
+
+Analyzes data and saves learnings for future carousels.
+
+```bash
+node {baseDir}/scripts/learn-from-analytics.js
+```
+
+**Generates:**
+- `learnings.json` - Accumulated knowledge base
+- Best hooks (those generating most views)
+- Optimal posting times
+- Recommendations for next carousel
+
+## Full Flow
+
+```bash
+# 1. Research business
+node {baseDir}/scripts/analyze-web.js https://my-product.com
+
+# 2. Generate slides
+GEMINI_API_KEY="..." bash {baseDir}/scripts/generate-slides.sh
+
+# 3. Review with vision (agent verifies text)
+# Agent checks each slide image
+
+# 4. Publish
+UPLOADPOST_TOKEN="..." UPLOADPOST_USER="myuser" bash {baseDir}/scripts/publish-carousel.sh
+
+# 5. (After a few hours/days) Analyze
+UPLOADPOST_TOKEN="..." UPLOADPOST_USER="myuser" bash {baseDir}/scripts/check-analytics.sh 7
+
+# 6. Learn for next carousels
+node {baseDir}/scripts/learn-from-analytics.js
+```
+
+## Files
+
+```
+{baseDir}/
+├── SKILL.md                      # This documentation
+└── scripts/
+    ├── analyze-web.js            # Full business research
+    ├── generate-slides.sh        # Generate 6 slides with coherence
+    ├── generate_image.py         # Gemini 3.1 flash image
+    ├── review-slides.js          # Prepare slides for review
+    ├── publish-carousel.sh       # Publish via Upload-Post API
+    ├── check-analytics.sh        # Get analytics (TikTok + Instagram)
+    ├── learn-from-analytics.js   # Learn from data
+    └── search-competitors.js     # Optional external search
+```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_API_KEY` | Google API key for image generation |
+| `UPLOADPOST_TOKEN` | Upload-Post token for publishing and analytics |
+| `UPLOADPOST_USER` | Upload-Post username (required) |
+
+## Hook Examples by Niche
+
+| Niche | Hook Example |
+|-------|--------------|
+| Social Media Tools | "Still posting to social media ONE BY ONE? 😩" |
+| SaaS General | "Still doing this MANUALLY?" |
+| Ecommerce | "The product TikTok won't stop recommending" |
+| App | "The app I wish I'd discovered sooner" |
+| Developer Tools | "The API that's going to change your code" |
+
+## Why Viraloop?
+
+| | Viraloop | Other skills |
+|-|----------|-------|
+| Publishing | Direct to feed | Drafts only |
+| Music | Auto trending music | Manual |
+| Platforms | TikTok + Instagram | Single platform |
+| Research | Auto URL analysis | Manual description |
+| Image coherence | Image-to-image reference | Independent slides |
+| Image gen | Gemini (free tier) | Paid providers |
+| Posting | upload-post.com (free, no CC) | Paid or self-hosted |
+| Text overlay | AI-native (Gemini renders) | External scripts |
+| Prompts | Structured templates | Free-form |
+| Setup | 3 env vars | Complex multi-tool setup |
+
+## Notes
+
+- Analysis extracts competitors from the website content itself (20+ known SaaS)
+- Image-to-image maintains coherence but takes ~20s per slide
+- Generated caption includes niche-relevant hashtags
+- Always review slide text - sometimes it gets cut off
+- `auto_add_music` on TikTok improves engagement
+- Check analytics after 24-48h for meaningful data
+- Learnings accumulate and improve with each published carousel
+- TikTok title max 90 characters (auto-truncated with hashtags)
