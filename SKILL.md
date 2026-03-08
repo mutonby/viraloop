@@ -6,7 +6,7 @@ metadata: {"clawdbot":{"emoji":"🔄","requires":{"env":["GEMINI_API_KEY","UPLOA
 
 # Viraloop
 
-Analyze any website and generate a 6-slide carousel for TikTok/Instagram with visual coherence.
+Analyze any website and generate a 6-slide carousel for TikTok/Instagram with visual coherence. Posts directly to your feed (no drafts) with auto trending music. Both APIs (Gemini + upload-post.com) have free plans — no credit card needed to start.
 
 ## Philosophy: Daily Iteration Loop
 

@@ -16,9 +16,10 @@ The skill accumulates insights across ALL your posts in `learnings.json`.
 
 ## Features
 
-- 🔍 **Full Business Research** - Analyzes brand, features, competitors from website
-- 🎨 **AI Image Generation** - Creates 6 visually coherent slides with Gemini
-- 📱 **Auto Publishing** - Posts to TikTok (with music) and Instagram
+- 🔍 **Full Business Research** - Analyzes brand, features, competitors from any URL
+- 🎨 **AI Image Generation** - Creates 6 visually coherent slides with Gemini (free plan available, no credit card)
+- 📱 **Direct Publishing** - Posts straight to your TikTok feed with auto trending music + Instagram simultaneously. No drafts, no manual steps
+- 💰 **100% Free to Start** - Both APIs (Gemini and [upload-post.com](https://upload-post.com)) have free plans, no credit card required
 - 📊 **Analytics Tracking** - Monitors performance across all posts
 - 🔄 **Learning Loop** - Accumulates insights: best hooks, times, days, styles
 
