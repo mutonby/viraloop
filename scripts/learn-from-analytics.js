@@ -1,320 +1,414 @@
 #!/usr/bin/env node
 /**
- * Learn from Analytics - Accumulates insights across all posts
+ * Learn from Analytics - Accumulates insights and extracts patterns
  * 
- * Run daily after checking analytics to build your knowledge base.
- * The more posts, the smarter the recommendations.
+ * What it learns:
+ * 1. Hook type performance (SHOCK vs CURIOSITY vs CONTRADICTION)
+ * 2. Best words/phrases that appear in top performers
+ * 3. Best emojis
+ * 4. Best hours and days
+ * 5. Patterns to AVOID (from low performers)
+ * 
+ * Output: learnings.json that feeds back into generate-hooks.sh
  */
 
 const fs = require('fs');
 const path = require('path');
 
-const CAROUSEL_DIR = '/tmp/carousel';
 const SKILL_DIR = path.dirname(__dirname);
 const LEARNINGS_FILE = path.join(SKILL_DIR, 'learnings.json');
+const HOOK_LEDGER_FILE = path.join(SKILL_DIR, 'hook-ledger.json');
+const PERFORMANCE_FILE = '/home/node/clawd/tiktok-marketing/hook-performance.json';
+
+// Common words to ignore when extracting patterns
+const STOP_WORDS = new Set([
+  'el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'en', 'a', 'que', 'y', 'o', 'tu', 'tus',
+  'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'your', 'you',
+  'es', 'son', 'está', 'están', 'con', 'por', 'para', 'como', 'más', 'pero', 'si',
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does',
+  'this', 'that', 'these', 'those', 'my', 'his', 'her', 'its', 'our', 'their',
+  'al', 'cada', 'todo', 'toda', 'todos', 'todas', 'muy', 'ya', 'se', 'lo', 'le'
+]);
 
 function loadLearnings() {
   try {
     return JSON.parse(fs.readFileSync(LEARNINGS_FILE, 'utf8'));
   } catch (e) {
     return {
-      version: 2,
+      version: 3,
       created: new Date().toISOString(),
-      totalPosts: 0,
-      posts: [],
-      insights: {
-        bestHooks: [],
-        bestPrompts: [],
-        bestTimes: [],
-        bestDays: [],
-        avgViews: 0,
-        avgLikes: 0,
-        avgEngagement: 0,
-        topPerformers: [],
-        lowPerformers: []
+      updated: null,
+      totalPostsAnalyzed: 0,
+      
+      // Performance by hook type
+      hookTypes: {
+        shock: { posts: 0, totalViews: 0, avgViews: 0, avgEngagement: 0, wins: 0 },
+        curiosity: { posts: 0, totalViews: 0, avgViews: 0, avgEngagement: 0, wins: 0 },
+        contradiction: { posts: 0, totalViews: 0, avgViews: 0, avgEngagement: 0, wins: 0 }
       },
-      recommendations: [],
+      
+      // Patterns that WORK (from top performers)
+      winning: {
+        words: [],      // [{word, count, avgViews}]
+        emojis: [],     // [{emoji, count, avgViews}]
+        phrases: [],    // [{phrase, count, avgViews}]
+        hours: [],      // [{hour, count, avgViews}]
+        days: []        // [{day, count, avgViews}]
+      },
+      
+      // Patterns to AVOID (from low performers)
+      avoid: {
+        words: [],
+        emojis: [],
+        phrases: []
+      },
+      
+      // Top 10 best performing hooks (for reference)
+      topHooks: [],
+      
+      // Generated recommendations for next hooks
+      recommendations: {
+        preferHookType: null,
+        useWords: [],
+        useEmojis: [],
+        avoidWords: [],
+        bestHour: null,
+        bestDay: null,
+        promptBoost: ""  // Extra instructions for the AI based on learnings
+      },
+      
+      // History of learning updates
       history: []
     };
   }
 }
 
-function saveLearnings(data) {
-  data.updated = new Date().toISOString();
-  fs.writeFileSync(LEARNINGS_FILE, JSON.stringify(data, null, 2));
+function loadPerformanceData() {
+  try {
+    return JSON.parse(fs.readFileSync(PERFORMANCE_FILE, 'utf8'));
+  } catch (e) {
+    console.error('❌ Cannot load performance data:', e.message);
+    return null;
+  }
 }
 
-function extractHook(title) {
-  if (!title) return null;
-  const firstLine = title.split('\n')[0].trim();
-  return firstLine.length < 100 ? firstLine : firstLine.substring(0, 100) + '...';
+function loadHookLedger() {
+  try {
+    return JSON.parse(fs.readFileSync(HOOK_LEDGER_FILE, 'utf8'));
+  } catch (e) {
+    return { hooks: [] };
+  }
 }
 
-function calculateEngagement(views, likes, comments, shares) {
-  if (!views || views === 0) return 0;
-  return ((likes + comments * 2 + shares * 3) / views * 100).toFixed(2);
+function extractEmojis(text) {
+  if (!text) return [];
+  const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu;
+  return text.match(emojiRegex) || [];
 }
 
-function analyzePost(post, learnings, prompts = []) {
-  const views = post.views || post.metrics?.views || 0;
-  const likes = post.likes || post.metrics?.likes || 0;
-  const comments = post.comments || post.metrics?.comments || 0;
-  const shares = post.shares || post.metrics?.shares || 0;
-  const engagement = calculateEngagement(views, likes, comments, shares);
-  
-  const avgViews = learnings.insights.avgViews || views;
-  
-  return {
-    id: post.request_id || post.id || Date.now().toString(),
-    hook: extractHook(post.title || post.caption),
-    prompts: prompts,
-    platform: post.platform || 'tiktok',
-    date: post.date || post.timestamp || new Date().toISOString(),
-    hour: new Date(post.date || post.timestamp || Date.now()).getHours(),
-    dayOfWeek: new Date(post.date || post.timestamp || Date.now()).getDay(),
-    views,
-    likes,
-    comments,
-    shares,
-    engagement: parseFloat(engagement),
-    performance: views > avgViews * 1.5 ? 'top' : views < avgViews * 0.5 ? 'low' : 'average'
-  };
+function extractWords(text) {
+  if (!text) return [];
+  // Remove emojis and special chars, lowercase, split
+  const cleaned = text
+    .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]/gu, '')
+    .toLowerCase()
+    .replace(/[^\w\sáéíóúñü]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+  return cleaned;
 }
 
-function updateInsights(learnings) {
-  const posts = learnings.posts;
-  if (posts.length === 0) return;
+function extractPhrases(text) {
+  if (!text) return [];
+  // Extract 2-3 word phrases that might be hooks
+  const cleaned = text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]/gu, '').trim();
+  const phrases = [];
   
-  // Calculate averages
-  const totalViews = posts.reduce((sum, p) => sum + (p.views || 0), 0);
-  const totalLikes = posts.reduce((sum, p) => sum + (p.likes || 0), 0);
-  const totalEngagement = posts.reduce((sum, p) => sum + (p.engagement || 0), 0);
+  // Look for common hook patterns
+  const patterns = [
+    /¿[^?]+\?/g,           // Spanish questions
+    /\b\w+\s+\w+\s+\w+(?=\s|$)/g,  // 3-word phrases
+  ];
   
-  learnings.insights.avgViews = Math.round(totalViews / posts.length);
-  learnings.insights.avgLikes = Math.round(totalLikes / posts.length);
-  learnings.insights.avgEngagement = (totalEngagement / posts.length).toFixed(2);
+  patterns.forEach(pattern => {
+    const matches = cleaned.match(pattern);
+    if (matches) phrases.push(...matches.map(m => m.toLowerCase().trim()));
+  });
   
-  // Find top performers
-  const sortedByViews = [...posts].sort((a, b) => (b.views || 0) - (a.views || 0));
-  learnings.insights.topPerformers = sortedByViews.slice(0, 5).map(p => ({
-    hook: p.hook,
-    views: p.views,
-    engagement: p.engagement
-  }));
+  return phrases.slice(0, 3); // Max 3 phrases per post
+}
+
+function determineHookType(caption, ledgerHooks) {
+  if (!caption) return 'unknown';
   
-  // Find low performers
-  learnings.insights.lowPerformers = sortedByViews.slice(-3).map(p => ({
-    hook: p.hook,
-    views: p.views,
-    reason: 'Low views'
-  }));
+  // First try to match with ledger
+  const ledgerMatch = ledgerHooks.find(h => 
+    caption.toLowerCase().includes(h.hook_text?.toLowerCase()?.slice(0, 20))
+  );
+  if (ledgerMatch?.type) return ledgerMatch.type.toLowerCase();
   
-  // Best hooks (from top performers)
-  learnings.insights.bestHooks = learnings.insights.topPerformers
-    .map(p => p.hook)
-    .filter(h => h);
+  // Heuristic detection
+  const lower = caption.toLowerCase();
+  if (lower.includes('💀') || lower.includes('😱') || lower.includes('error') || lower.includes('muerto')) {
+    return 'shock';
+  }
+  if (lower.includes('🤔') || lower.includes('?') || lower.includes('por qué') || lower.includes('cómo')) {
+    return 'curiosity';
+  }
+  if (lower.includes('🤷') || lower.includes('menos') || lower.includes('but') || lower.includes('pero')) {
+    return 'contradiction';
+  }
+  return 'unknown';
+}
+
+function updateWordStats(statsArray, items, views, engagement, isWinning) {
+  items.forEach(item => {
+    let existing = statsArray.find(s => s.item === item);
+    if (!existing) {
+      existing = { item, count: 0, totalViews: 0, totalEngagement: 0, avgViews: 0, avgEngagement: 0 };
+      statsArray.push(existing);
+    }
+    existing.count++;
+    existing.totalViews += views;
+    existing.totalEngagement += engagement;
+    existing.avgViews = Math.round(existing.totalViews / existing.count);
+    existing.avgEngagement = (existing.totalEngagement / existing.count).toFixed(2);
+  });
+}
+
+function generateRecommendations(learnings) {
+  const rec = learnings.recommendations;
+  
+  // 1. Best hook type
+  const types = learnings.hookTypes;
+  const typeRanking = Object.entries(types)
+    .filter(([_, data]) => data.posts >= 2) // Need at least 2 posts
+    .sort((a, b) => b[1].avgViews - a[1].avgViews);
+  
+  if (typeRanking.length > 0) {
+    rec.preferHookType = typeRanking[0][0];
     
-  // Best prompts (extract style from slide 1 of top performers)
-  learnings.insights.bestPrompts = sortedByViews
+    // Calculate if there's a significant winner (>30% better)
+    if (typeRanking.length > 1) {
+      const best = typeRanking[0][1].avgViews;
+      const second = typeRanking[1][1].avgViews;
+      if (best > second * 1.3) {
+        types[typeRanking[0][0]].wins++;
+      }
+    }
+  }
+  
+  // 2. Best words (top 5 by avgViews with count >= 2)
+  rec.useWords = learnings.winning.words
+    .filter(w => w.count >= 2)
+    .sort((a, b) => b.avgViews - a.avgViews)
+    .slice(0, 5)
+    .map(w => w.item);
+  
+  // 3. Best emojis
+  rec.useEmojis = learnings.winning.emojis
+    .filter(e => e.count >= 2)
+    .sort((a, b) => b.avgViews - a.avgViews)
     .slice(0, 3)
-    .filter(p => p.prompts && p.prompts.length > 0)
-    .map(p => {
-      const slide1 = p.prompts.find(pr => Number(pr.slide) === 1);
-      return slide1 ? slide1.prompt : null;
-    })
-    .filter(p => p);
+    .map(e => e.item);
   
-  // Best posting times
-  const hourCounts = {};
-  const hourViews = {};
-  posts.forEach(p => {
-    const hour = p.hour;
-    hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-    hourViews[hour] = (hourViews[hour] || 0) + (p.views || 0);
-  });
+  // 4. Words to avoid (from low performers)
+  rec.avoidWords = learnings.avoid.words
+    .filter(w => w.count >= 2)
+    .sort((a, b) => a.avgViews - b.avgViews)
+    .slice(0, 5)
+    .map(w => w.item);
   
-  const avgViewsByHour = Object.entries(hourViews).map(([hour, views]) => ({
-    hour: parseInt(hour),
-    avgViews: Math.round(views / (hourCounts[hour] || 1))
-  })).sort((a, b) => b.avgViews - a.avgViews);
+  // 5. Best hour
+  const hourStats = learnings.winning.hours
+    .filter(h => h.count >= 2)
+    .sort((a, b) => b.avgViews - a.avgViews);
+  rec.bestHour = hourStats.length > 0 ? hourStats[0].item : null;
   
-  learnings.insights.bestTimes = avgViewsByHour.slice(0, 3).map(h => `${h.hour}:00`);
+  // 6. Best day
+  const dayStats = learnings.winning.days
+    .filter(d => d.count >= 2)
+    .sort((a, b) => b.avgViews - a.avgViews);
+  rec.bestDay = dayStats.length > 0 ? dayStats[0].item : null;
   
-  // Best days
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayCounts = {};
-  const dayViews = {};
-  posts.forEach(p => {
-    const day = p.dayOfWeek;
-    dayCounts[day] = (dayCounts[day] || 0) + 1;
-    dayViews[day] = (dayViews[day] || 0) + (p.views || 0);
-  });
-  
-  const avgViewsByDay = Object.entries(dayViews).map(([day, views]) => ({
-    day: dayNames[parseInt(day)],
-    avgViews: Math.round(views / (dayCounts[day] || 1))
-  })).sort((a, b) => b.avgViews - a.avgViews);
-  
-  learnings.insights.bestDays = avgViewsByDay.slice(0, 3).map(d => d.day);
-  
-  // Generate recommendations
-  learnings.recommendations = [];
-  
-  if (learnings.insights.bestHooks.length > 0) {
-    learnings.recommendations.push({
-      type: 'hook',
-      priority: 'high',
-      message: `Use hooks similar to: "${learnings.insights.bestHooks[0]}"`
-    });
+  // 7. Generate prompt boost for AI
+  let boost = [];
+  if (rec.useWords.length > 0) {
+    boost.push(`Use these HIGH-PERFORMING words: ${rec.useWords.join(', ')}`);
   }
-  
-  if (learnings.insights.bestPrompts.length > 0) {
-    learnings.recommendations.push({
-      type: 'prompt',
-      priority: 'high',
-      message: 'Reuse the visual style (colors/lighting) from your top performing prompt.'
-    });
+  if (rec.useEmojis.length > 0) {
+    boost.push(`Include these emojis that get engagement: ${rec.useEmojis.join(' ')}`);
   }
-  
-  if (learnings.insights.bestTimes.length > 0) {
-    learnings.recommendations.push({
-      type: 'timing',
-      priority: 'medium',
-      message: `Best posting times: ${learnings.insights.bestTimes.join(', ')}`
-    });
+  if (rec.avoidWords.length > 0) {
+    boost.push(`AVOID these low-performing words: ${rec.avoidWords.join(', ')}`);
   }
-  
-  if (learnings.insights.bestDays.length > 0) {
-    learnings.recommendations.push({
-      type: 'day',
-      priority: 'medium',
-      message: `Best days: ${learnings.insights.bestDays.join(', ')}`
-    });
+  if (rec.preferHookType) {
+    boost.push(`Preferred hook style: ${rec.preferHookType.toUpperCase()} (best performing)`);
   }
+  rec.promptBoost = boost.join('. ');
   
-  if (posts.length < 10) {
-    learnings.recommendations.push({
-      type: 'data',
-      priority: 'info',
-      message: `Keep posting! ${10 - posts.length} more posts needed for reliable insights.`
-    });
-  }
-  
-  if (posts.length >= 10 && learnings.insights.avgEngagement < 5) {
-    learnings.recommendations.push({
-      type: 'engagement',
-      priority: 'high',
-      message: 'Engagement is low. Try more provocative hooks or trending audio.'
-    });
-  }
+  return rec;
 }
 
-async function main() {
+function main() {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('🧠 LEARNING FROM ANALYTICS');
   console.log('═══════════════════════════════════════════════════════════════\n');
   
+  const perfData = loadPerformanceData();
+  if (!perfData || !perfData.allPosts) {
+    console.log('❌ No performance data found. Run check-analytics.sh first.');
+    process.exit(1);
+  }
+  
+  const ledger = loadHookLedger();
   const learnings = loadLearnings();
   
-  // Load latest analytics snapshot
-  const snapshotFile = path.join(CAROUSEL_DIR, 'analytics-snapshot.json');
-  let snapshot = {};
-  try {
-    snapshot = JSON.parse(fs.readFileSync(snapshotFile, 'utf8'));
-  } catch (e) {
-    console.log('⚠️  No analytics snapshot found. Run check-analytics.sh first.\n');
+  // Filter out test posts (views < 10 or caption too short)
+  const validPosts = perfData.allPosts.filter(p => 
+    p.views >= 10 && p.caption && p.caption.length > 20
+  );
+  
+  console.log(`📊 Analyzing ${validPosts.length} valid posts (excluded ${perfData.allPosts.length - validPosts.length} test posts)\n`);
+  
+  if (validPosts.length === 0) {
+    console.log('❌ No valid posts to analyze.');
+    process.exit(1);
   }
   
-  // Load post info if exists
-  const postInfoFile = path.join(CAROUSEL_DIR, 'post-info.json');
-  let postInfo = {};
-  try {
-    postInfo = JSON.parse(fs.readFileSync(postInfoFile, 'utf8'));
-  } catch (e) {
-    // No post info
-  }
+  // Calculate average for top/bottom classification
+  const avgViews = validPosts.reduce((sum, p) => sum + (p.views || 0), 0) / validPosts.length;
+  const avgEngagement = validPosts.reduce((sum, p) => sum + parseFloat(p.engagementRate || 0), 0) / validPosts.length;
   
-  // Add new post if not already tracked
-  if (postInfo.request_id) {
-    const exists = learnings.posts.find(p => p.id === postInfo.request_id);
-    if (!exists) {
-      // Load prompts if they exist
-      const promptsFile = path.join(CAROUSEL_DIR, 'slide-prompts.json');
-      let slidePrompts = [];
-      try {
-        slidePrompts = JSON.parse(fs.readFileSync(promptsFile, 'utf8'));
-      } catch (e) {
-        // No prompts
-      }
-
-      // Get metrics from snapshot if available
-      const metrics = snapshot.profile?.tiktok || {};
-      const newPost = analyzePost({
-        request_id: postInfo.request_id,
-        title: postInfo.caption,
-        platform: 'tiktok',
-        timestamp: postInfo.timestamp,
-        views: metrics.impressions || 0,
-        likes: metrics.likes || 0,
-        comments: metrics.comments || 0,
-        shares: metrics.shares || 0
-      }, learnings, slidePrompts);
-      
-      learnings.posts.push(newPost);
-      learnings.totalPosts = learnings.posts.length;
-      console.log(`📝 New post added: ${newPost.hook?.substring(0, 40)}...`);
+  console.log(`📈 Average views: ${Math.round(avgViews)}`);
+  console.log(`📈 Average engagement: ${avgEngagement.toFixed(2)}%\n`);
+  
+  // Classify posts
+  const topPosts = validPosts.filter(p => p.views > avgViews * 1.2); // 20% above average
+  const lowPosts = validPosts.filter(p => p.views < avgViews * 0.5); // 50% below average
+  
+  console.log(`🏆 Top performers: ${topPosts.length}`);
+  console.log(`📉 Low performers: ${lowPosts.length}\n`);
+  
+  // Reset stats for fresh calculation
+  learnings.winning.words = [];
+  learnings.winning.emojis = [];
+  learnings.winning.hours = [];
+  learnings.winning.days = [];
+  learnings.avoid.words = [];
+  learnings.avoid.emojis = [];
+  
+  // Reset hook type stats
+  Object.keys(learnings.hookTypes).forEach(type => {
+    learnings.hookTypes[type] = { posts: 0, totalViews: 0, avgViews: 0, avgEngagement: 0, wins: learnings.hookTypes[type].wins || 0 };
+  });
+  
+  // Process all valid posts
+  validPosts.forEach(post => {
+    const views = post.views || 0;
+    const engagement = parseFloat(post.engagementRate || 0);
+    const hookType = determineHookType(post.caption, ledger.hooks);
+    const isTop = views > avgViews * 1.2;
+    const isLow = views < avgViews * 0.5;
+    
+    // Update hook type stats
+    if (hookType !== 'unknown' && learnings.hookTypes[hookType]) {
+      const typeStats = learnings.hookTypes[hookType];
+      typeStats.posts++;
+      typeStats.totalViews += views;
+      typeStats.avgViews = Math.round(typeStats.totalViews / typeStats.posts);
+      typeStats.avgEngagement = ((typeStats.avgEngagement * (typeStats.posts - 1) + engagement) / typeStats.posts).toFixed(2);
     }
-  }
+    
+    // Extract patterns
+    const words = extractWords(post.caption);
+    const emojis = extractEmojis(post.caption);
+    const hour = post.hour;
+    const day = post.dayOfWeek;
+    
+    // Update winning patterns (from top posts)
+    if (isTop) {
+      updateWordStats(learnings.winning.words, words, views, engagement, true);
+      updateWordStats(learnings.winning.emojis, emojis, views, engagement, true);
+      if (hour !== undefined) updateWordStats(learnings.winning.hours, [hour], views, engagement, true);
+      if (day) updateWordStats(learnings.winning.days, [day], views, engagement, true);
+    }
+    
+    // Update avoid patterns (from low posts)
+    if (isLow) {
+      updateWordStats(learnings.avoid.words, words, views, engagement, false);
+      updateWordStats(learnings.avoid.emojis, emojis, views, engagement, false);
+    }
+  });
   
-  // Keep only last 100 posts
-  learnings.posts = learnings.posts.slice(-100);
+  // Store top hooks for reference
+  learnings.topHooks = topPosts
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 10)
+    .map(p => ({
+      caption: p.caption?.slice(0, 100),
+      views: p.views,
+      engagement: p.engagementRate,
+      hour: p.hour,
+      day: p.dayOfWeek
+    }));
   
-  // Update insights
-  updateInsights(learnings);
+  // Generate recommendations
+  learnings.totalPostsAnalyzed = validPosts.length;
+  generateRecommendations(learnings);
   
   // Add to history
   learnings.history.push({
     date: new Date().toISOString(),
-    totalPosts: learnings.totalPosts,
-    avgViews: learnings.insights.avgViews,
-    avgEngagement: learnings.insights.avgEngagement
+    postsAnalyzed: validPosts.length,
+    avgViews: Math.round(avgViews),
+    topHookType: learnings.recommendations.preferHookType
   });
-  learnings.history = learnings.history.slice(-30); // Keep 30 days
+  
+  // Keep only last 10 history entries
+  if (learnings.history.length > 10) {
+    learnings.history = learnings.history.slice(-10);
+  }
   
   // Save
-  saveLearnings(learnings);
+  learnings.updated = new Date().toISOString();
+  fs.writeFileSync(LEARNINGS_FILE, JSON.stringify(learnings, null, 2));
   
-  // Display results
-  console.log(`📊 Total posts tracked: ${learnings.totalPosts}`);
-  console.log(`👀 Average views: ${learnings.insights.avgViews}`);
-  console.log(`❤️  Average likes: ${learnings.insights.avgLikes}`);
-  console.log(`📈 Average engagement: ${learnings.insights.avgEngagement}%`);
+  // Print summary
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('📋 LEARNINGS SUMMARY');
+  console.log('═══════════════════════════════════════════════════════════════\n');
   
-  if (learnings.insights.bestHooks.length > 0) {
-    console.log('\n🏆 Best performing hooks:');
-    learnings.insights.bestHooks.slice(0, 3).forEach((h, i) => {
-      console.log(`   ${i + 1}. "${h}"`);
-    });
+  console.log('🎯 HOOK TYPE PERFORMANCE:');
+  Object.entries(learnings.hookTypes).forEach(([type, data]) => {
+    if (data.posts > 0) {
+      console.log(`   ${type.toUpperCase()}: ${data.posts} posts, avg ${data.avgViews} views, ${data.avgEngagement}% eng`);
+    }
+  });
+  
+  console.log('\n✅ WINNING PATTERNS:');
+  if (learnings.recommendations.useWords.length > 0) {
+    console.log(`   Words: ${learnings.recommendations.useWords.join(', ')}`);
+  }
+  if (learnings.recommendations.useEmojis.length > 0) {
+    console.log(`   Emojis: ${learnings.recommendations.useEmojis.join(' ')}`);
+  }
+  if (learnings.recommendations.bestHour !== null) {
+    console.log(`   Best hour: ${learnings.recommendations.bestHour}:00 UTC`);
   }
   
-  if (learnings.insights.bestTimes.length > 0) {
-    console.log(`\n⏰ Best posting times: ${learnings.insights.bestTimes.join(', ')}`);
+  console.log('\n❌ PATTERNS TO AVOID:');
+  if (learnings.recommendations.avoidWords.length > 0) {
+    console.log(`   Words: ${learnings.recommendations.avoidWords.join(', ')}`);
   }
   
-  if (learnings.insights.bestDays.length > 0) {
-    console.log(`📅 Best days: ${learnings.insights.bestDays.join(', ')}`);
-  }
+  console.log('\n💡 RECOMMENDATION:');
+  console.log(`   Prefer: ${learnings.recommendations.preferHookType?.toUpperCase() || 'need more data'} hooks`);
   
-  if (learnings.recommendations.length > 0) {
-    console.log('\n💡 RECOMMENDATIONS:');
-    learnings.recommendations.forEach(r => {
-      const icon = r.priority === 'high' ? '🔴' : r.priority === 'medium' ? '🟡' : 'ℹ️';
-      console.log(`   ${icon} ${r.message}`);
-    });
-  }
+  console.log('\n📝 PROMPT BOOST FOR AI:');
+  console.log(`   "${learnings.recommendations.promptBoost || 'Need more data'}"`);
   
-  console.log(`\n💾 Learnings saved to: ${LEARNINGS_FILE}`);
-  console.log('\n═══════════════════════════════════════════════════════════════');
+  console.log('\n✅ Saved to:', LEARNINGS_FILE);
 }
 
-main().catch(console.error);
+main();

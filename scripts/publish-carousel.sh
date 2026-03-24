@@ -120,6 +120,41 @@ if [ "$SUCCESS" = "true" ] && [ -n "$REQUEST_ID" ]; then
     echo "       3. Search for a viral song/trending"
     echo ""
     echo "   📊 Info saved to: $CAROUSEL_DIR/post-info.json"
+    
+    # ═══════════════════════════════════════════════════════════════
+    # UPDATE HOOK LEDGER WITH IMAGE PROMPT TRACKING
+    # ═══════════════════════════════════════════════════════════════
+    LEDGER_FILE="$(dirname "$0")/../hook-ledger.json"
+    HOOK_INFO_FILE="$CAROUSEL_DIR/hook-info.json"
+    
+    if [ -f "$HOOK_INFO_FILE" ] && [ -f "$LEDGER_FILE" ]; then
+        echo ""
+        echo "   📒 Updating hook ledger..."
+        
+        # Read hook info
+        HOOK_TYPE=$(jq -r '.hook_type // "unknown"' "$HOOK_INFO_FILE")
+        HOOK_TEXT=$(jq -r '.hook_text // ""' "$HOOK_INFO_FILE")
+        IMAGE_PROMPT=$(jq -r '.image_prompt // ""' "$HOOK_INFO_FILE")
+        VISUAL_STYLE=$(jq -r '.visual_style // ""' "$HOOK_INFO_FILE")
+        COLORS=$(jq -r '.colors // ""' "$HOOK_INFO_FILE")
+        
+        # Create new entry
+        NEW_ENTRY=$(jq -n \
+            --arg date "$(date +%Y-%m-%d)" \
+            --arg type "$HOOK_TYPE" \
+            --arg hook_text "$HOOK_TEXT" \
+            --arg request_id "$REQUEST_ID" \
+            --arg image_prompt "$IMAGE_PROMPT" \
+            --arg visual_style "$VISUAL_STYLE" \
+            --arg colors "$COLORS" \
+            '{date: $date, type: $type, hook_text: $hook_text, request_id: $request_id, image_prompt: $image_prompt, visual_style: $visual_style, colors: $colors}')
+        
+        # Append to ledger
+        jq --argjson entry "$NEW_ENTRY" '.hooks += [$entry]' "$LEDGER_FILE" > "${LEDGER_FILE}.tmp" && \
+            mv "${LEDGER_FILE}.tmp" "$LEDGER_FILE"
+        
+        echo "   ✅ Ledger updated with image prompt tracking"
+    fi
 else
     echo ""
     echo "⚠️ Check API response"

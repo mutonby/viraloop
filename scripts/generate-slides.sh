@@ -1,12 +1,16 @@
 #!/bin/bash
-# Generate slides v3 - Uses full business research data
+# Generate slides v4 - Visual novelty + hook categories + anti-stock
 set -e
 
 CAROUSEL_DIR="/tmp/carousel"
 ANALYSIS_FILE="$CAROUSEL_DIR/analysis.json"
+HOOKS_DIR="$CAROUSEL_DIR/hooks"
 UV_BIN="${HOME}/.local/bin/uv"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NANO_SCRIPT="$SCRIPT_DIR/generate_image.py"
+
+# Parse arguments
+HOOK_TYPE="${1:-auto}"  # shock, curiosity, contradiction, or auto (random)
 
 if [ ! -f "$ANALYSIS_FILE" ]; then
     echo "❌ Error: $ANALYSIS_FILE not found"
@@ -18,6 +22,9 @@ if [ -z "$GEMINI_API_KEY" ]; then
     echo "❌ Error: GEMINI_API_KEY is not set"
     exit 1
 fi
+
+# Anti-stock filter - CRITICAL for visual novelty
+ANTI_STOCK="ABSOLUTELY AVOID: generic stock photo aesthetics, typical influencer poses, shocked pretty girl trope, overused laptop-coffee setups, fake smiles, corporate handshakes, typical business meeting scenes, anything that looks like it came from Shutterstock."
 
 # ═══════════════════════════════════════════════════════════════
 # READ ANALYSIS DATA
@@ -64,7 +71,7 @@ echo ""
 # Using explicit fields produces more consistent results
 # ═══════════════════════════════════════════════════════════════
 
-BASE_STYLE="Create an image of: TikTok vertical carousel slide (9:16 ratio, 768x1376 pixels). Style: professional social media content, cinematic, eye-catching. Composition: vertical portrait orientation, text centered at 28%% from top. Lighting: professional, depth of field, soft shadows. Background: $IMAGE_THEME. Color palette: $COLOR_DESC. Text overlay: large bold $FONT font in white with black outline for readability, 4-6 words per line, max 4 lines. Avoid: text in bottom 20%% of image, blurry text, cut-off words, horizontal orientation, watermarks, logos."
+BASE_STYLE="Create an image of: TikTok vertical carousel slide (9:16 ratio, 768x1376 pixels). Style: professional social media content, cinematic, eye-catching, VISUALLY NOVEL. Composition: vertical portrait orientation, text centered at 28%% from top. Lighting: professional, depth of field, soft shadows. Background: $IMAGE_THEME. Color palette: $COLOR_DESC. Text overlay: large bold $FONT font in white with black outline for readability, 4-6 words per line, max 4 lines. $ANTI_STOCK. Avoid: text in bottom 20%% of image, blurry text, cut-off words, horizontal orientation, watermarks, logos."
 
 # Initialize prompts tracking
 echo '[]' > "$CAROUSEL_DIR/slide-prompts.json"
@@ -79,8 +86,8 @@ generate_slide() {
     echo "   Scene: $SCENE"
     
     if [ -n "$INPUT_IMAGE" ] && [ -f "$INPUT_IMAGE" ]; then
-        # Image-to-image: precise editing template for visual coherence
-        PROMPT="Change ONLY: the text to \"$TEXT\" and the scene to represent: $SCENE. Keep identical: visual style, composition, color palette ($COLOR_DESC), typography style ($FONT), lighting, mood, and overall aesthetic from the reference image. Do not change the layout, orientation, or design language. Text must be large, bold, white with black outline, centered at 28%% from top. Avoid: text in bottom 20%%, blurry text, cut-off words."
+        # Image-to-image: STRICT style matching - detect if reference is photo or illustration and match exactly
+        PROMPT="CRITICAL: Look at the reference image style. If it's a REALISTIC PHOTO, generate a REALISTIC PHOTO. If it's an ILLUSTRATION/CARTOON, generate an ILLUSTRATION/CARTOON. NEVER mix styles. Match EXACTLY: the visual style (photo vs illustration), the artistic technique, color grading, lighting style, and overall aesthetic. Change ONLY: the text to \"$TEXT\" and the background scene to: $SCENE. Keep the SAME person/character style if applicable. Text must be large, bold, white with black outline, centered at 28%% from top. Avoid: text in bottom 20%%, blurry text, cut-off words, switching between photo and illustration styles."
         
         $UV_BIN run "$NANO_SCRIPT" \
             --prompt "$PROMPT" \
@@ -162,8 +169,63 @@ case "$NICHE" in
         ;;
 esac
 
+# ═══════════════════════════════════════════════════════════════
 # SLIDE 1: HOOK (establishes ALL visual style)
-generate_slide 1 "$HOOK" "Frustrated person at desk, overwhelmed, chaotic environment. Stressed expression. Related to $NICHE."
+# Check if pre-generated hooks exist, otherwise generate with category
+# ═══════════════════════════════════════════════════════════════
+
+# Select hook type
+if [ "$HOOK_TYPE" = "auto" ]; then
+    # Random selection weighted by learnings (TODO: implement learning weights)
+    HOOK_TYPES=("shock" "curiosity" "contradiction")
+    HOOK_TYPE="${HOOK_TYPES[$RANDOM % 3]}"
+    echo "🎲 Auto-selected hook type: $HOOK_TYPE"
+fi
+
+# Check for pre-generated hook
+PRE_HOOK="$HOOKS_DIR/hook-${HOOK_TYPE}.jpg"
+if [ -f "$PRE_HOOK" ]; then
+    echo "📎 Using pre-generated $HOOK_TYPE hook"
+    cp "$PRE_HOOK" "$CAROUSEL_DIR/slide-1.jpg"
+    # Get hook text from metadata
+    if [ -f "$HOOKS_DIR/hooks-meta.json" ]; then
+        HOOK=$(jq -r ".hooks[] | select(.type==\"$HOOK_TYPE\") | .text" "$HOOKS_DIR/hooks-meta.json")
+    fi
+else
+    echo "🎨 Generating $HOOK_TYPE hook on-the-fly"
+    
+    # Generate hook based on type with anti-stock and visual novelty
+    case "$HOOK_TYPE" in
+        shock)
+            HOOK_SCENE="Surreal, impossible scene that stops the scroll. Something visually WRONG or ABSURD. Chaotic but eye-catching. Related to $NICHE but exaggerated to the extreme."
+            ;;
+        curiosity)
+            HOOK_SCENE="Mysterious, intriguing scene that creates information gap. Something being revealed, secrets, dramatic lighting. Makes viewer NEED to see more."
+            ;;
+        contradiction)
+            HOOK_SCENE="Visual contradiction - two things that shouldn't exist together. Relaxed person with intense activity. Impossible combination that makes viewer think 'wait, how?'"
+            ;;
+        *)
+            HOOK_SCENE="Frustrated person at desk, overwhelmed, chaotic environment. Stressed expression. Related to $NICHE."
+            ;;
+    esac
+    
+    generate_slide 1 "$HOOK" "$HOOK_SCENE"
+fi
+
+# Save hook info for tracking/learning (including image prompt for analytics)
+# Escape HOOK_SCENE for JSON
+HOOK_SCENE_ESCAPED=$(echo "$HOOK_SCENE" | sed 's/"/\\"/g' | tr '\n' ' ')
+cat > "$CAROUSEL_DIR/hook-info.json" << EOF
+{
+  "hook_type": "$HOOK_TYPE",
+  "hook_text": "$HOOK",
+  "image_prompt": "$HOOK_SCENE_ESCAPED",
+  "visual_style": "$IMAGE_THEME",
+  "colors": "$COLOR_DESC",
+  "generated_at": "$(date -Iseconds)"
+}
+EOF
 
 # Reference for coherence
 REF="$CAROUSEL_DIR/slide-1.jpg"
